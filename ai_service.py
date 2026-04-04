@@ -1,18 +1,19 @@
 """
 ai_service.py — Groq API integration (OpenAI-compatible)
-RCBA-aware assistant with S3 knowledge base + logging + email alerts
+With logging + built-in email alerts (no external import)
 """
 
 import os
 import logging
 import time
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 from openai import OpenAI, APIError, APIConnectionError, RateLimitError
-from email_service import send_email  # 🔥 EMAIL ALERTS
 
-# ── Logging setup ─────────────────────────────────────────────────────────────
+# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     filename="/opt/chatbot/app.log",
     level=logging.ERROR,
@@ -20,27 +21,63 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Model ─────────────────────────────────────────────────────────────────────
+# ── ENV ───────────────────────────────────────────────────────────────────────
 MODEL = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
 
-# ── S3 config ─────────────────────────────────────────────────────────────────
 KNOWLEDGE_S3_KEY = "knowledge/rcba_knowledge.txt"
 
-# ── Cache ─────────────────────────────────────────────────────────────────────
-_knowledge_cache: str | None = None
-
-# ── Email cooldown (avoid spam) ───────────────────────────────────────────────
+_knowledge_cache = None
 _last_error_time = 0
 
 
-# ── S3 loader ─────────────────────────────────────────────────────────────────
-def load_knowledge_from_s3() -> str:
-    bucket = os.environ.get("S3_BUCKET", "")
-    region = os.environ.get("AWS_REGION", "ap-south-1")
+# ── EMAIL FUNCTION (BUILT-IN) ─────────────────────────────────────────────────
+def send_error_email(error_msg: str, user_message: str):
+    global _last_error_time
 
-    if not bucket:
-        logger.warning("S3_BUCKET not set")
-        return "[Knowledge base not configured]"
+    # Avoid spam (1 email/min)
+    if time.time() - _last_error_time < 60:
+        return
+
+    if not EMAIL_USER or not EMAIL_PASS:
+        logger.error("Email credentials not set")
+        return
+
+    try:
+        msg = MIMEText(f"""
+🚨 RCBA Chatbot Error
+
+Error:
+{error_msg}
+
+User message:
+{user_message}
+
+Time:
+{datetime.now()}
+""")
+
+        msg["Subject"] = "🚨 RCBA Chatbot Error"
+        msg["From"] = EMAIL_USER
+        msg["To"] = EMAIL_USER
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+
+        _last_error_time = time.time()
+
+    except Exception as e:
+        logger.error(f"Email failed: {str(e)}")
+
+
+# ── S3 ────────────────────────────────────────────────────────────────────────
+def load_knowledge_from_s3():
+    bucket = os.getenv("S3_BUCKET", "")
+    region = os.getenv("AWS_REGION", "ap-south-1")
 
     try:
         s3 = boto3.client("s3", region_name=region)
@@ -52,39 +89,35 @@ def load_knowledge_from_s3() -> str:
         return f"[S3 error: {str(e)}]"
 
 
-def get_knowledge() -> str:
+def get_knowledge():
     global _knowledge_cache
     if _knowledge_cache is None:
         _knowledge_cache = load_knowledge_from_s3()
     return _knowledge_cache
 
 
-def reload_knowledge() -> tuple[bool, str]:
+def reload_knowledge():
     global _knowledge_cache
     _knowledge_cache = None
     content = get_knowledge()
 
     if content.startswith("["):
         return False, content
-    return True, f"Knowledge base reloaded ({len(content)} chars)"
+    return True, "Knowledge base reloaded"
 
 
-# ── Prompt ────────────────────────────────────────────────────────────────────
-def _build_system_prompt() -> str:
+# ── PROMPT ────────────────────────────────────────────────────────────────────
+def _build_system_prompt():
     return f"""
-You are the official AI assistant for RCBA.
+You are RCBA's AI assistant. Be helpful, friendly, and accurate.
 
-Be helpful, friendly, and accurate.
-
---- KNOWLEDGE ---
 {get_knowledge()}
---- END ---
 """
 
 
-# ── Groq client ───────────────────────────────────────────────────────────────
-def _get_client() -> OpenAI:
-    api_key = os.getenv("GROQ_API_KEY", "")
+# ── GROQ ──────────────────────────────────────────────────────────────────────
+def _get_client():
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise ValueError("GROQ_API_KEY not set")
 
@@ -94,35 +127,8 @@ def _get_client() -> OpenAI:
     )
 
 
-# ── Email alert helper ────────────────────────────────────────────────────────
-def send_error_email(error_msg: str, user_message: str):
-    global _last_error_time
-
-    # Avoid spam: max 1 email per minute
-    if time.time() - _last_error_time < 60:
-        return
-
-    try:
-        send_email(
-            subject="🚨 RCBA Chatbot Error",
-            body=f"""
-Error occurred in chatbot:
-
-Error: {error_msg}
-
-User message: {user_message}
-
-Time: {datetime.now()}
-"""
-        )
-        _last_error_time = time.time()
-
-    except Exception as e:
-        logger.error(f"Email send failed: {str(e)}")
-
-
-# ── Main function ─────────────────────────────────────────────────────────────
-def get_ai_response(user_message: str, history: list[dict]) -> tuple[str, str | None]:
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+def get_ai_response(user_message, history):
     try:
         client = _get_client()
 
@@ -137,8 +143,7 @@ def get_ai_response(user_message: str, history: list[dict]) -> tuple[str, str | 
             temperature=0.6,
         )
 
-        reply = response.choices[0].message.content.strip()
-        return reply, None
+        return response.choices[0].message.content.strip(), None
 
     except ValueError as e:
         logger.error(str(e))
@@ -147,7 +152,7 @@ def get_ai_response(user_message: str, history: list[dict]) -> tuple[str, str | 
 
     except RateLimitError:
         logger.error("Rate limit hit")
-        return "⚠️ Too many requests right now. Please try again shortly.", None
+        return "⚠️ Too many requests. Try again shortly.", None
 
     except APIConnectionError:
         logger.error("Connection failed")
@@ -158,10 +163,10 @@ def get_ai_response(user_message: str, history: list[dict]) -> tuple[str, str | 
         error_msg = f"AI API error: {e.message}"
         logger.error(error_msg)
         send_error_email(error_msg, user_message)
-        return "⚠️ I'm having trouble responding right now. Please try again later.", None
+        return "⚠️ AI service issue. Please try again.", None
 
     except Exception as e:
-        error_msg = f"Unexpected error: {str(e)}"
+        error_msg = str(e)
         logger.error(error_msg)
         send_error_email(error_msg, user_message)
         return "⚠️ Something went wrong. Please try again.", None
