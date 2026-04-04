@@ -41,151 +41,162 @@ with col2:
 # ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
-/* Base */
+/* ── Reset & Base ── */
 html, body, [data-testid="stApp"] {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
-    background: radial-gradient(circle at 20% 20%, #1c1c2a, #0b0b10 60%);
-    color: #eaeaf0;
+    font-family: 'DM Sans', sans-serif;
+    background: #0d0d0f;
+    color: #e8e6e0;
 }
 
-/* Hide Streamlit chrome */
+/* ── Hide Streamlit chrome ── */
 #MainMenu, footer, header { visibility: hidden; }
 [data-testid="stToolbar"] { display: none; }
 
-/* ───────────────── Glass Core ───────────────── */
-
-/* Main container glass */
-.block-container {
-    max-width: 860px;
-    padding-top: 2rem;
-}
-
-/* Sidebar */
+/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border-right: 1px solid rgba(255,255,255,0.08);
+    background: #111114;
+    border-right: 1px solid #222228;
+}
+[data-testid="stSidebar"] .block-container { padding-top: 2rem; }
+
+/* ── Main container ── */
+.block-container {
+    padding: 2rem 2.5rem;
+    max-width: 860px;
 }
 
-/* Chat wrapper */
-.chat-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 1.2rem;
-    margin-bottom: 1rem;
-}
+/* ── Chat bubbles ── */
+.chat-wrapper { display: flex; flex-direction: column; gap: 1.2rem; margin-bottom: 1.5rem; }
 
-/* Message rows */
-.msg-row {
-    display: flex;
-    gap: 10px;
-    animation: fadeIn 0.25s ease;
-}
+.msg-row { display: flex; align-items: flex-start; gap: 0.75rem; animation: fadeUp 0.25s ease; }
+.msg-row.user  { flex-direction: row-reverse; }
 
-.msg-row.user {
-    flex-direction: row-reverse;
-}
-
-/* Animation */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Avatar */
 .avatar {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.08);
-    backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; flex-shrink: 0; font-weight: 700;
+    font-family: 'Space Mono', monospace;
 }
+.avatar.bot  { background: #1a1a2e; border: 1px solid #30305a; color: #7c7cf0; }
+.avatar.user { background: #1a2e1a; border: 1px solid #305a30; color: #7cf07c; }
 
-/* Bubbles */
 .bubble {
-    padding: 12px 16px;
-    border-radius: 18px;
-    max-width: 75%;
-    font-size: 0.95rem;
-    line-height: 1.6;
+    padding: 0.85rem 1.15rem;
+    border-radius: 16px;
+    max-width: 78%;
+    font-size: 0.92rem;
+    line-height: 1.65;
+    word-break: break-word;
 }
-
-/* Bot bubble */
 .bubble.bot {
-    background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #17171d;
+    border: 1px solid #28282f;
+    border-top-left-radius: 4px;
+    color: #ddd9d0;
 }
-
-/* User bubble */
 .bubble.user {
-    background: linear-gradient(135deg, rgba(124,124,240,0.35), rgba(124,124,240,0.15));
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(124,124,240,0.35);
+    background: #0f2011;
+    border: 1px solid #1c3e1c;
+    border-top-right-radius: 4px;
+    color: #c8f0c8;
+    text-align: right;
 }
 
-/* Timestamp */
-.ts {
-    font-size: 0.65rem;
-    opacity: 0.45;
-    margin-top: 4px;
-}
+/* ── Timestamp ── */
+.ts { font-size: 0.68rem; color: #555; margin-top: 0.3rem; font-family: 'Space Mono', monospace; }
+.msg-row.user  .ts { text-align: right; }
 
-/* Inputs */
-[data-testid="stTextInput"] input,
-[data-testid="stTextArea"] textarea {
-    background: rgba(255,255,255,0.06) !important;
-    backdrop-filter: blur(18px);
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 14px !important;
-    color: #fff !important;
-}
-
-/* Chat input */
-[data-testid="stChatInput"] textarea {
-    background: rgba(255,255,255,0.06) !important;
-    backdrop-filter: blur(20px);
-    border-radius: 16px !important;
-}
-
-/* Buttons */
-[data-testid="stButton"] button {
-    background: rgba(255,255,255,0.08);
-    backdrop-filter: blur(14px);
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.08);
-    transition: 0.2s;
-}
-
-[data-testid="stButton"] button:hover {
-    background: rgba(255,255,255,0.18);
-    transform: translateY(-1px);
-}
-
-/* Divider */
+/* ── Divider ── */
 .section-divider {
     border: none;
-    border-top: 1px solid rgba(255,255,255,0.08);
+    border-top: 1px solid #222228;
     margin: 1.5rem 0;
 }
 
-/* Sidebar text */
+/* ── Lead form card ── */
+.lead-card {
+    background: #111114;
+    border: 1px solid #222228;
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-top: 0.5rem;
+}
+.lead-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7c7cf0;
+    margin-bottom: 1rem;
+}
+
+/* ── Streamlit input overrides ── */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea {
+    background: #0d0d0f !important;
+    border: 1px solid #2a2a33 !important;
+    border-radius: 10px !important;
+    color: #e8e6e0 !important;
+    font-family: 'DM Sans', sans-serif !important;
+}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus {
+    border-color: #7c7cf0 !important;
+    box-shadow: 0 0 0 2px rgba(124,124,240,0.12) !important;
+}
+
+/* ── Buttons ── */
+[data-testid="stButton"] > button {
+    background: #7c7cf0;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    padding: 0.55rem 1.25rem;
+    transition: background 0.18s, transform 0.12s;
+    cursor: pointer;
+}
+[data-testid="stButton"] > button:hover {
+    background: #6060d8;
+    transform: translateY(-1px);
+}
+
+/* ── Chat input ── */
+[data-testid="stChatInput"] textarea {
+    background: #111114 !important;
+    border: 1px solid #2a2a33 !important;
+    border-radius: 12px !important;
+    color: #e8e6e0 !important;
+    font-family: 'DM Sans', sans-serif !important;
+}
+
+/* ── Success / Error ── */
+[data-testid="stAlert"] { border-radius: 10px; }
+
+/* ── Sidebar heading ── */
 .sidebar-logo {
-    font-size: 1.05rem;
-    font-weight: 600;
+    font-family: 'Space Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #7c7cf0;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.25rem;
 }
-
 .sidebar-sub {
-    font-size: 0.75rem;
-    opacity: 0.5;
+    font-size: 0.78rem;
+    color: #555;
+    margin-bottom: 1.5rem;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
