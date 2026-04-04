@@ -3,6 +3,8 @@ app.py — Main Streamlit UI
 Production-ready AI chatbot with lead capture.
 """
 
+import os
+
 import streamlit as st
 from datetime import datetime
 
@@ -10,13 +12,17 @@ from ai_service import get_ai_response, reload_knowledge
 from s3_service import upload_lead_to_s3
 from email_service import send_lead_email
 
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 # Sidebar state
 if "sidebar_open" not in st.session_state:
     st.session_state.sidebar_open = True
 
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AI Assistant",
+    page_title="RCBA ImpactBot",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded" if st.session_state.sidebar_open else "collapsed",
@@ -28,7 +34,7 @@ with col2:
     if st.button("☰"):
         st.session_state.sidebar_open = not st.session_state.sidebar_open
         st.rerun()
-        
+
 # ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -198,7 +204,7 @@ def init_session():
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": "Hi there! 👋 I'm the RCBA AI Assistant — your guide to the Rotaract Club of Bombay Airport. Ask me about our projects, events, how to join, donate, or anything else about RCBA! 🌟",
+                "content": "Hi there! 👋 I'm the RCBA ImpactBot — your guide to the Rotaract Club of Bombay Airport. Ask me about our projects, events, how to join, or anything else about RCBA! 🌟",
                 "time": datetime.now().strftime("%H:%M"),
             }
         ]
@@ -211,7 +217,7 @@ init_session()
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-logo">🌟 RCBA Assistant</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-logo">RCBA ImpactBot 🥰</div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-sub">Rotaract Club of Bombay Airport · Act For Impact</div>', unsafe_allow_html=True)
 
     st.markdown("---")
@@ -234,12 +240,25 @@ with st.sidebar:
         st.rerun()
 
     # Reload knowledge base from S3
+        # Reload button
     if st.button("🔄 Reload knowledge base"):
-        ok, msg = reload_knowledge()
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
+        st.session_state.show_admin_prompt = True
+
+    # Password prompt
+    if st.session_state.show_admin_prompt:
+        password = st.text_input("Enter admin password", type="password")
+
+        if st.button("Submit"):
+            if password == ADMIN_PASSWORD:
+                st.session_state.show_admin_prompt = False
+                ok, msg = reload_knowledge()
+
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+            else:
+                st.error("Incorrect password ❌")
 
     st.markdown("---")
 
