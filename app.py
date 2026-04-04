@@ -20,6 +20,9 @@ if "sidebar_open" not in st.session_state:
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
 
+if "show_admin_prompt" not in st.session_state:
+    st.session_state.show_admin_prompt = False
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="RCBA ImpactBot",
