@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 # llama3-8b-8192: fast, free-tier, 8k context — ideal for a knowledge-base chatbot
-MODEL = "llama3-8b-8192"
+MODEL = "compound-mini"
 
 # S3 key where the knowledge base lives
 KNOWLEDGE_S3_KEY = "knowledge/rcba_knowledge.txt"
