@@ -1,0 +1,32 @@
+[Unit]
+Description=AI Chatbot — Streamlit Application
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=appuser
+WorkingDirectory=/opt/chatbot
+
+# Load environment variables from .env file
+EnvironmentFile=/opt/chatbot/.env
+
+# Activate venv and run streamlit
+ExecStart=/opt/chatbot/venv/bin/streamlit run app.py \
+    --server.port=8501 \
+    --server.address=0.0.0.0 \
+    --server.headless=true
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=chatbot
+
+[Install]
+WantedBy=multi-user.target

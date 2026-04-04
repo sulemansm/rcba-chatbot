@@ -1,0 +1,116 @@
+=== ABOUT RCBA ===
+The Rotaract Club of Bombay Airport (RCBA) is a community-based non-profit organisation
+under the Rotaract District 3141. It is based in Mumbai, India.
+Motto: "Act For Impact"
+The club is made up of agile young people who believe in uplifting society through
+social and community service, development of individuals, and recreation.
+Website: https://www.rcbombayairport.org
+
+=== CONTACT ===
+Phone:
+  - Rtr. Meet Shah: +91 8369422053
+  - Rtr. Tanvi Shah: +91 99677 18493
+Email: rc.bombayairport3141@gmail.com
+Social Media:
+  - Facebook: https://www.facebook.com/RCBombayAirport/
+  - Instagram: https://www.instagram.com/rc_bombayairport/
+  - LinkedIn: https://www.linkedin.com/in/rotaract-club-of-bombay-airport-6a35621a7/
+
+=== HOW TO JOIN / DONATE ===
+Join Us page: https://www.rcbombayairport.org/contact-us
+Donate page:  https://www.rcbombayairport.org/donation
+
+=== OUR PROJECTS ===
+
+--- Community Service ---
+1. Kranti
+   An initiative that promotes menstruation health and cleanliness while empowering
+   women and girls to take better care of themselves.
+
+2. Open School 6.0
+   Free education provided to over 310 kids from four vernacular medium schools,
+   driven by 60+ dedicated volunteers.
+
+3. Happy Rays 2.0
+   Delivers the joy of a dream birthday celebration to every child regardless of
+   socioeconomic status.
+
+4. Toys for Tots 3.0
+   Over 1,000 toys donated to underprivileged children, embodying the true spirit
+   of Christmas and kindness.
+
+5. Gul Daastan
+   Stories brought to life to help kids learn life skills and good habits in a fun,
+   loving way.
+
+6. Project Sahara
+   Creates a caring community that respects and cares for its elderly citizens.
+
+7. Jashn-E-Rang
+   Spreads joy, creativity, and inclusivity through colors and artistic expression.
+
+8. Share Your Closet 4.0
+   Over 1,200 bags with 7,000+ apparel items donated to underprivileged people in
+   Mumbai during Diwali.
+
+--- Club Service & Sports ---
+9. Dholida 5.0
+   Navratri celebration through garba and dandiya with 200+ members, celebrating
+   India's rich heritage.
+
+10. Prom 4.0
+    An enchanting night of sparkling lights, vibrant streamers — Prom 2025!
+
+11. Camping 2.0
+    A beach camp celebrating the year's accomplishments while enjoying coastal wonders.
+
+12. Midnight Cycling
+    A thrilling night ride through the streets of Mumbai for cycling enthusiasts
+    and adventure seekers.
+
+13. Potluck Palooza
+    Fosters camaraderie and bonds among RCBA members through a shared culinary experience.
+
+14. Mehfil - an Open Mic
+    A stage for in-house and external artists to showcase literary, musical, and
+    performative talents.
+
+15. Heart Beats
+    An event focused on open conversations, dance-offs, and deep connections among members.
+
+--- Professional Development ---
+16. Empowering Voices
+    Helps participants step out of their comfort zones and develop public speaking
+    and communication skills.
+
+17. Khelkood 2.0
+    Brings members together for a nostalgic experience by revisiting childhood games.
+
+18. FIKA 2.0
+    Focused on building connections and forming new friendships in a warm atmosphere.
+
+--- Supporting Avenue Projects ---
+19. Capture'O'graphy
+    A year-long photography initiative to appreciate iconic Aamchi Mumbai.
+
+20. Afterthoughts
+    A book club that unites friends and knowledge for great reads and engaging company.
+
+21. Glam & Connect
+    An exclusive, creative, interactive experience crafted specifically for young women.
+
+=== TEAM (2025–2026) ===
+The RCBA team for 2025-2026 is a group of passionate young leaders. Full team details
+are available at: https://www.rcbombayairport.org/team-3-1
+
+=== EVENTS (RECENT / UPCOMING) ===
+- Installation Ceremony — Sun, Aug 10, Mumbai
+  (Sign up: https://forms.gle/qmvJp815vVKxcvac7)
+- FIKA & General Body Meeting — Sun, Aug 03, Mumbai
+  Theme: Pot Painting | Venue: Aegyo | Free for RCBA members
+- Donation Drive — Sun, Dec 06, Mumbai
+
+=== HOW TO UPDATE THIS FILE ===
+Edit this file freely and re-upload it to S3 at:
+  s3://YOUR_BUCKET_NAME/knowledge/rcba_knowledge.txt
+Then click "Reload knowledge base" in the chatbot sidebar — no restart needed.

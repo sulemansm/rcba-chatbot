@@ -1,0 +1,53 @@
+###############################################################################
+# .github/workflows/deploy.yml
+# Triggered on push to main → SSH into EC2 → pull code → restart service
+###############################################################################
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:        # allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    name: Deploy Chatbot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ── 1. Checkout (not strictly needed for deploy, but good for context) ──
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. SSH & deploy ───────────────────────────────────────────────────
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:        ${{ secrets.EC2_HOST }}
+          username:    ubuntu
+          key:         ${{ secrets.EC2_SSH_KEY }}
+          port:        22
+          timeout:     60s
+          script: |
+            set -e
+
+            echo "=== Pulling latest code ==="
+            cd /opt/chatbot
+            git pull origin main
+
+            echo "=== Installing / updating dependencies ==="
+            source venv/bin/activate
+            pip install -r requirements.txt --quiet
+
+            echo "=== Restarting service ==="
+            sudo systemctl restart chatbot
+
+            echo "=== Verifying service ==="
+            sleep 3
+            sudo systemctl is-active chatbot && echo "Service is running ✅" || echo "Service failed ❌"
+
+      # ── 3. Notify result ──────────────────────────────────────────────────
+      - name: Deployment complete
+        run: echo "Deployment finished at $(date -u)"

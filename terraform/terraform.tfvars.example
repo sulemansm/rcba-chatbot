@@ -1,0 +1,10 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in your values
+# DO NOT commit terraform.tfvars to git
+
+aws_region       = "ap-south-1"
+environment      = "production"
+instance_type    = "t2.micro"
+key_pair_name    = "my-aws-keypair"          # must already exist in AWS console
+s3_bucket_name   = "my-chatbot-leads-2024"  # must be globally unique
+allowed_ssh_cidr = "0.0.0.0/0"              # replace with your IP for security

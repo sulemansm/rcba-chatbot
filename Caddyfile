@@ -1,0 +1,31 @@
+# Caddyfile — OPTIONAL: only use if you have a custom domain
+# Install Caddy: https://caddyserver.com/docs/install
+#
+# Replace "chat.yourdomain.com" with your actual domain.
+# Caddy auto-provisions a free Let's Encrypt TLS certificate.
+#
+# Usage:
+#   sudo caddy run --config /opt/chatbot/Caddyfile
+
+chat.yourdomain.com {
+    reverse_proxy localhost:8501
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    nosniff
+        X-Frame-Options           DENY
+        Referrer-Policy           strict-origin-when-cross-origin
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/chatbot.log
+        format json
+    }
+}
+
+# Redirect www → apex
+www.chat.yourdomain.com {
+    redir https://chat.yourdomain.com{uri} permanent
+}
