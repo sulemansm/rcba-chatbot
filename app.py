@@ -10,14 +10,25 @@ from ai_service import get_ai_response, reload_knowledge
 from s3_service import upload_lead_to_s3
 from email_service import send_lead_email
 
+# Sidebar state
+if "sidebar_open" not in st.session_state:
+    st.session_state.sidebar_open = True
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Assistant",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded" if st.session_state.sidebar_open else "collapsed",
 )
 
+# Toggle button (top right)
+col1, col2 = st.columns([10, 1])
+with col2:
+    if st.button("☰"):
+        st.session_state.sidebar_open = not st.session_state.sidebar_open
+        st.rerun()
+        
 # ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
