@@ -1,75 +1,58 @@
 """
 ai_service.py — Groq API integration (OpenAI-compatible)
-RCBA-aware assistant: loads knowledge base dynamically from S3.
-
-Knowledge file location in S3:
-    s3://<S3_BUCKET>/knowledge/rcba_knowledge.txt
-
-To update RCBA info: just upload a new version of that file to S3.
-No code changes or redeployment needed.
+RCBA-aware assistant with S3 knowledge base + logging + email alerts
 """
 
 import os
 import logging
+import time
+from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 from openai import OpenAI, APIError, APIConnectionError, RateLimitError
+from email_service import send_email  # 🔥 EMAIL ALERTS
 
+# ── Logging setup ─────────────────────────────────────────────────────────────
+logging.basicConfig(
+    filename="/opt/chatbot/app.log",
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-# ── Model ──────────────────────────────────────────────────────────────────────
-# llama3-8b-8192: fast, free-tier, 8k context — ideal for a knowledge-base chatbot
-MODEL = "compound-mini"
+# ── Model ─────────────────────────────────────────────────────────────────────
+MODEL = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
 
-# S3 key where the knowledge base lives
+# ── S3 config ─────────────────────────────────────────────────────────────────
 KNOWLEDGE_S3_KEY = "knowledge/rcba_knowledge.txt"
 
-# ── In-memory cache ────────────────────────────────────────────────────────────
-# Loaded once per process start. Restart the service to pick up S3 changes,
-# or call reload_knowledge() for hot-reload via the admin panel in app.py.
+# ── Cache ─────────────────────────────────────────────────────────────────────
 _knowledge_cache: str | None = None
 
+# ── Email cooldown (avoid spam) ───────────────────────────────────────────────
+_last_error_time = 0
 
-# ── S3 loader ──────────────────────────────────────────────────────────────────
+
+# ── S3 loader ─────────────────────────────────────────────────────────────────
 def load_knowledge_from_s3() -> str:
-    """
-    Fetches rcba_knowledge.txt from S3.
-    Returns the file content as a string, or a fallback message on failure.
-    """
     bucket = os.environ.get("S3_BUCKET", "")
     region = os.environ.get("AWS_REGION", "ap-south-1")
 
     if not bucket:
-        logger.warning("S3_BUCKET not set — knowledge base unavailable.")
-        return "[Knowledge base not configured. Set S3_BUCKET environment variable.]"
+        logger.warning("S3_BUCKET not set")
+        return "[Knowledge base not configured]"
 
     try:
         s3 = boto3.client("s3", region_name=region)
         response = s3.get_object(Bucket=bucket, Key=KNOWLEDGE_S3_KEY)
-        content = response["Body"].read().decode("utf-8")
-        logger.info("Knowledge base loaded from s3://%s/%s (%d chars)", bucket, KNOWLEDGE_S3_KEY, len(content))
-        return content
+        return response["Body"].read().decode("utf-8")
 
-    except ClientError as e:
-        code = e.response["Error"]["Code"]
-        if code == "NoSuchKey":
-            msg = (
-                f"Knowledge file not found at s3://{bucket}/{KNOWLEDGE_S3_KEY}. "
-                "Please upload rcba_knowledge.txt to S3."
-            )
-        else:
-            msg = f"S3 error ({code}): {e.response['Error']['Message']}"
-        logger.error(msg)
-        return f"[{msg}]"
-
-    except BotoCoreError as e:
-        msg = f"S3 connection error: {str(e)}"
-        logger.error(msg)
-        return f"[{msg}]"
+    except Exception as e:
+        logger.error(f"S3 error: {str(e)}")
+        return f"[S3 error: {str(e)}]"
 
 
 def get_knowledge() -> str:
-    """Returns cached knowledge, loading from S3 on first call."""
     global _knowledge_cache
     if _knowledge_cache is None:
         _knowledge_cache = load_knowledge_from_s3()
@@ -77,81 +60,108 @@ def get_knowledge() -> str:
 
 
 def reload_knowledge() -> tuple[bool, str]:
-    """Force-reloads the knowledge base from S3 (clears cache). Returns (success, message)."""
     global _knowledge_cache
     _knowledge_cache = None
     content = get_knowledge()
+
     if content.startswith("["):
-        return False, content  # error message wrapped in brackets
-    return True, f"Knowledge base reloaded successfully ({len(content)} characters)."
+        return False, content
+    return True, f"Knowledge base reloaded ({len(content)} chars)"
 
 
-# ── System prompt builder ──────────────────────────────────────────────────────
+# ── Prompt ────────────────────────────────────────────────────────────────────
 def _build_system_prompt() -> str:
-    knowledge = get_knowledge()
-    return f"""You are the official AI assistant for RCBA — the Rotaract Club of Bombay Airport.
-Your job is to answer questions about RCBA clearly, warmly, and accurately using the
-knowledge provided below. You speak like a friendly, enthusiastic club member.
+    return f"""
+You are the official AI assistant for RCBA.
 
-When someone asks about RCBA's projects, events, how to join, how to donate, or
-contact details — answer from the knowledge base. If something isn't covered in
-the knowledge base, say so honestly and direct them to the website
-(https://www.rcbombayairport.org) or the contact email (rc.bombayairport3141@gmail.com).
+Be helpful, friendly, and accurate.
 
-For general questions unrelated to RCBA, answer helpfully but briefly,
-then gently bring the conversation back to RCBA if relevant.
-
-Always be concise, warm, and enthusiastic — just like the RCBA spirit: Act For Impact! 🌟
-
---- RCBA KNOWLEDGE BASE ---
-{knowledge}
---- END OF KNOWLEDGE BASE ---
+--- KNOWLEDGE ---
+{get_knowledge()}
+--- END ---
 """
 
 
-# ── Groq client ────────────────────────────────────────────────────────────────
+# ── Groq client ───────────────────────────────────────────────────────────────
 def _get_client() -> OpenAI:
-    api_key = os.environ.get("GROQ_API_KEY", "")
+    api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
-        raise ValueError("GROQ_API_KEY environment variable is not set.")
+        raise ValueError("GROQ_API_KEY not set")
+
     return OpenAI(
         api_key=api_key,
-        base_url="https://api.groq.com/openai/v1",
+        base_url="https://api.groq.com/openai/v1"
     )
 
 
-# ── Main function ──────────────────────────────────────────────────────────────
+# ── Email alert helper ────────────────────────────────────────────────────────
+def send_error_email(error_msg: str, user_message: str):
+    global _last_error_time
+
+    # Avoid spam: max 1 email per minute
+    if time.time() - _last_error_time < 60:
+        return
+
+    try:
+        send_email(
+            subject="🚨 RCBA Chatbot Error",
+            body=f"""
+Error occurred in chatbot:
+
+Error: {error_msg}
+
+User message: {user_message}
+
+Time: {datetime.now()}
+"""
+        )
+        _last_error_time = time.time()
+
+    except Exception as e:
+        logger.error(f"Email send failed: {str(e)}")
+
+
+# ── Main function ─────────────────────────────────────────────────────────────
 def get_ai_response(user_message: str, history: list[dict]) -> tuple[str, str | None]:
-    """
-    Returns (reply_text, error_message).
-    error_message is None on success.
-    history = [{"role": "user"|"assistant", "content": "..."}]
-    """
     try:
         client = _get_client()
 
         messages = [{"role": "system", "content": _build_system_prompt()}]
-        # Keep last 8 turns to stay comfortably within the 8k context window
         messages += history[-8:]
         messages.append({"role": "user", "content": user_message})
 
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            max_tokens=768,   # generous but avoids burning free-tier tokens
-            temperature=0.6,  # lower = more factual, fewer hallucinations
+            max_tokens=768,
+            temperature=0.6,
         )
 
         reply = response.choices[0].message.content.strip()
         return reply, None
 
     except ValueError as e:
-        return "", str(e)
+        logger.error(str(e))
+        send_error_email(str(e), user_message)
+        return "⚠️ Configuration issue. Please try again later.", None
+
     except RateLimitError:
-        return "", "Rate limit reached. Please wait a moment and try again."
+        logger.error("Rate limit hit")
+        return "⚠️ Too many requests right now. Please try again shortly.", None
+
     except APIConnectionError:
-        return "", "Could not connect to the AI service. Check your internet connection."
+        logger.error("Connection failed")
+        send_error_email("API connection failed", user_message)
+        return "⚠️ Unable to connect to AI service.", None
+
     except APIError as e:
-        return "", f"AI API error: {e.message}"
+        error_msg = f"AI API error: {e.message}"
+        logger.error(error_msg)
+        send_error_email(error_msg, user_message)
+        return "⚠️ I'm having trouble responding right now. Please try again later.", None
+
     except Exception as e:
-        return "", f"Unexpected error: {str(e)}"
+        error_msg = f"Unexpected error: {str(e)}"
+        logger.error(error_msg)
+        send_error_email(error_msg, user_message)
+        return "⚠️ Something went wrong. Please try again.", None
