@@ -22,8 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── ENV ───────────────────────────────────────────────────────────────────────
-# MODEL = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
-MODEL="compound"
+MODEL = os.getenv("MODEL_NAME", "groq/compound-mini")
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
