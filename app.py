@@ -109,21 +109,61 @@ CSS = (
     "@keyframes fadeUp{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}"
     ".avatar{width:32px;height:32px;border-radius:50%;flex-shrink:0;overflow:hidden;border:1.5px solid rgba(255,255,255,0.12);background:#000;}"
     ".avatar img{width:100%;height:100%;object-fit:cover;}"
-    ".avatar.user{background:var(--orange-dim);border:1.5px solid var(--orange-mid);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--orange);overflow:visible;}"
+    ".avatar.user{background:var(--orange-dim);border:1.5px solid var(--orange-mid);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:var(--orange);overflow:hidden;white-space:nowrap;}"
     ".bubble{padding:10px 14px;border-radius:16px;max-width:78%;font-size:0.88rem;line-height:1.7;word-break:break-word;}"
     ".bubble.bot{background:rgba(255,255,255,0.05);border:1px solid var(--border);border-top-left-radius:4px;color:var(--text);}"
-    ".bubble.user{background:var(--orange-dim);border:1px solid var(--orange-mid);border-top-right-radius:4px;color:#fff;text-align:right;}"
+    ".bubble.user{background:var(--orange-dim);border:1px solid var(--orange-mid);border-top-right-radius:4px;color:#fff;text-align:left;}"
     ".ts{font-size:0.65rem;color:var(--muted);margin-top:3px;opacity:0.65;}"
     ".msg-row.user .ts{text-align:right;}"
     "[data-testid='stMetric']{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0.5rem 0.75rem;}"
     "[data-testid='stMetricLabel']{color:var(--muted)!important;font-size:8.5px!important;text-transform:uppercase;letter-spacing:0.08em;font-family:var(--font)!important;}"
     "[data-testid='stMetricValue']{color:var(--orange)!important;font-family:var(--font)!important;font-size:1.4rem!important;font-weight:800!important;}"
     "[data-testid='stAlert']{border-radius:10px;}"
+".bubble ul{margin:6px 0 6px 16px;padding:0;}"
+".bubble li{margin-bottom:3px;line-height:1.55;}"
+".bubble strong{color:#fff;font-weight:700;}"
+".bubble em{font-style:italic;opacity:0.9;}"
     "hr{border:none;border-top:1px solid var(--border-lt);margin:0.75rem 0;}"
     "</style>"
 )
 
 st.markdown(CSS, unsafe_allow_html=True)
+
+# ── Sidebar toggle — fixed top-right, always visible even when sidebar collapsed ──
+st.markdown(
+    """
+    <style>
+    div[data-testid="stMainBlockContainer"] > div:first-child {
+        position: relative;
+    }
+    #sb-toggle-btn {
+        position: fixed;
+        top: 14px;
+        right: 18px;
+        z-index: 9999;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 8px;
+        color: rgba(255,255,255,0.7);
+        font-size: 16px;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    #sb-toggle-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+_tc1, _tc2 = st.columns([10, 1])
+with _tc2:
+    if st.button("☰", key="sb_toggle", help="Toggle sidebar"):
+        st.session_state.sidebar_open = not st.session_state.sidebar_open
+        st.rerun()
 
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -268,22 +308,61 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+def _md_to_html(text: str) -> str:
+    """Convert basic markdown to HTML for chat bubbles."""
+    import re
+    # Escape any raw HTML first
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Bold **text** or __text__
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
+    # Italic *text* or _text_
+    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'(?<![_\w])_([^_]+)_(?![_\w])', r'<em>\1</em>', text)
+    # Bullet points: lines starting with * or - 
+    lines = text.split("\n")
+    out, in_list = [], False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'^[\*\-] ', stripped):
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            out.append(f'<li>{stripped[2:]}</li>')
+        else:
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append(line if line.strip() else "<br>")
+    if in_list:
+        out.append("</ul>")
+    # Join and convert remaining newlines to <br>
+    text = "\n".join(out)
+    text = re.sub(r'\n{2,}', '<br><br>', text)
+    text = text.replace("\n", "<br>")
+    return text
+
+
 chat_html = '<div class="chat-wrapper">'
 for msg in st.session_state.messages:
     role     = msg["role"]
-    content  = msg["content"].replace("\n", "<br>")
+    raw      = msg["content"]
     ts       = msg.get("time", "")
     css_role = "bot" if role == "assistant" else "user"
 
     if role == "assistant":
+        # Render markdown for bot messages
+        content     = _md_to_html(raw)
         avatar_html = f'<div class="avatar"><img src="{LOGO_SRC}" alt="RCBA"/></div>'
     else:
-        avatar_html = '<div class="avatar user">Y</div>'
+        # User messages: plain text, no markdown processing
+        content     = raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+        avatar_html = '<div class="avatar user">You</div>'
 
     chat_html += (
         f'<div class="msg-row {css_role}">'
         f'{avatar_html}'
-        f'<div>'
+        f'<div style="min-width:0;flex:1;">'
         f'<div class="bubble {css_role}">{content}</div>'
         f'<div class="ts">{ts}</div>'
         f'</div>'
