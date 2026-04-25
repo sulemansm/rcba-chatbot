@@ -1,10 +1,10 @@
 """
-app.py — Main Streamlit UI
-Production-ready AI chatbot with lead capture.
+app.py — RCBA ImpactBot
+Themed to match release.rcbombayairport.in
+RAG-only: all answers grounded in the knowledge base.
 """
 
 import os
-
 import streamlit as st
 from datetime import datetime
 
@@ -13,201 +13,275 @@ from s3_service import upload_lead_to_s3
 from email_service import send_lead_email
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-# Sidebar state
-if "sidebar_open" not in st.session_state:
-    st.session_state.sidebar_open = True
 
-if "admin_authenticated" not in st.session_state:
-    st.session_state.admin_authenticated = False
+for key, val in {
+    "sidebar_open": True,
+    "admin_authenticated": False,
+    "show_admin_prompt": False,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
 
-if "show_admin_prompt" not in st.session_state:
-    st.session_state.show_admin_prompt = False
-
-# ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="RCBA ImpactBot",
-    page_icon="🤖",
+    page_icon="🌀",
     layout="wide",
     initial_sidebar_state="expanded" if st.session_state.sidebar_open else "collapsed",
 )
 
-# Toggle button (top right)
-col1, col2 = st.columns([10, 1])
-with col2:
-    if st.button("☰"):
-        st.session_state.sidebar_open = not st.session_state.sidebar_open
-        st.rerun()
-
-# ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Google Fonts ── */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@700;800&display=swap');
 
-/* ── Reset & Base ── */
-html, body, [data-testid="stApp"] {
-    font-family: 'DM Sans', sans-serif;
-    background: #0d0d0f;
-    color: #e8e6e0;
+:root {
+    --orange:       #f97316;
+    --orange-dim:   rgba(249,115,22,0.12);
+    --orange-mid:   rgba(249,115,22,0.25);
+    --teal:         #22d3ee;
+    --teal-dim:     rgba(34,211,238,0.10);
+    --purple:       #a855f7;
+    --bg:           #0d0d10;
+    --surface:      rgba(255,255,255,0.04);
+    --border:       rgba(255,255,255,0.08);
+    --border-light: rgba(255,255,255,0.05);
+    --text:         rgba(255,255,255,0.88);
+    --muted:        rgba(255,255,255,0.38);
+    --font-body:    'Inter', sans-serif;
+    --font-display: 'Syne', sans-serif;
 }
 
-/* ── Hide Streamlit chrome ── */
+html, body, [data-testid="stApp"] {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* ── ambient blobs (behind everything) ── */
+[data-testid="stApp"]::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+        radial-gradient(ellipse 340px 340px at -80px -80px, rgba(192,57,10,0.45), transparent 70%),
+        radial-gradient(ellipse 260px 260px at 20% 90%, rgba(107,33,168,0.38), transparent 70%),
+        radial-gradient(ellipse 240px 240px at 88% 12%, rgba(14,116,144,0.35), transparent 70%),
+        radial-gradient(ellipse 200px 200px at 92% 80%, rgba(147,51,234,0.30), transparent 70%);
+}
+
 #MainMenu, footer, header { visibility: hidden; }
 [data-testid="stToolbar"] { display: none; }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: #111114;
-    border-right: 1px solid #222228;
+    background: rgba(255,255,255,0.022) !important;
+    border-right: 1px solid var(--border) !important;
+    backdrop-filter: blur(12px);
 }
-[data-testid="stSidebar"] .block-container { padding-top: 2rem; }
+[data-testid="stSidebar"] > div { padding-top: 0 !important; }
 
 /* ── Main container ── */
 .block-container {
-    padding: 2rem 2.5rem;
-    max-width: 860px;
+    padding: 1.5rem 2rem;
+    max-width: 880px;
+    position: relative; z-index: 1;
 }
 
-/* ── Chat bubbles ── */
-.chat-wrapper { display: flex; flex-direction: column; gap: 1.2rem; margin-bottom: 1.5rem; }
-
-.msg-row { display: flex; align-items: flex-start; gap: 0.75rem; animation: fadeUp 0.25s ease; }
-.msg-row.user  { flex-direction: row-reverse; }
-
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
+/* ── Sidebar brand block ── */
+.sb-brand {
+    padding: 1.25rem 1rem 1rem;
+    border-bottom: 1px solid var(--border-light);
+    margin-bottom: 0;
 }
-
-.avatar {
-    width: 36px; height: 36px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1rem; flex-shrink: 0; font-weight: 700;
-    font-family: 'Space Mono', monospace;
+.sb-logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.sb-logo {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--surface); border: 1.5px solid rgba(255,255,255,0.12);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.avatar.bot  { background: #1a1a2e; border: 1px solid #30305a; color: #7c7cf0; }
-.avatar.user { background: #1a2e1a; border: 1px solid #305a30; color: #7cf07c; }
-
-.bubble {
-    padding: 0.85rem 1.15rem;
-    border-radius: 16px;
-    max-width: 78%;
-    font-size: 0.92rem;
-    line-height: 1.65;
-    word-break: break-word;
+.sb-logo-ring {
+    width: 23px; height: 23px; border-radius: 50%;
+    border: 3px solid transparent;
+    border-top-color: var(--orange); border-right-color: var(--teal);
+    border-bottom-color: var(--purple); border-left-color: #4ade80;
 }
-.bubble.bot {
-    background: #17171d;
-    border: 1px solid #28282f;
-    border-top-left-radius: 4px;
-    color: #ddd9d0;
+.sb-club  { font-family: var(--font-display); font-size: 13px; font-weight: 800; color: #fff; line-height: 1.2; }
+.sb-sub   { font-size: 9px; color: var(--orange); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.sb-pill  {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--teal-dim); border: 1px solid rgba(34,211,238,0.22);
+    border-radius: 20px; padding: 3px 10px;
 }
-.bubble.user {
-    background: #0f2011;
-    border: 1px solid #1c3e1c;
-    border-top-right-radius: 4px;
-    color: #c8f0c8;
-    text-align: right;
+.sb-dot   { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+.sb-pill-text { font-size: 9px; color: var(--teal); font-weight: 600; letter-spacing: 0.04em; }
+
+/* ── Stats grid ── */
+.sb-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border-light);
 }
+.stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 10px;
+}
+.stat-label { font-size: 8.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 1px; }
+.stat-val   { font-family: var(--font-display); font-size: 20px; font-weight: 800; }
+.orange { color: var(--orange); }
+.teal   { color: var(--teal); }
 
-/* ── Timestamp ── */
-.ts { font-size: 0.68rem; color: #555; margin-top: 0.3rem; font-family: 'Space Mono', monospace; }
-.msg-row.user  .ts { text-align: right; }
-
-/* ── Divider ── */
-.section-divider {
-    border: none;
-    border-top: 1px solid #222228;
-    margin: 1.5rem 0;
+/* ── Section heading ── */
+.sb-section {
+    font-size: 8.5px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.1em; padding: 12px 16px 6px; display: block;
 }
 
-/* ── Lead form card ── */
-.lead-card {
-    background: #111114;
-    border: 1px solid #222228;
-    border-radius: 16px;
-    padding: 1.5rem;
-    margin-top: 0.5rem;
+/* ── Form ── */
+.sb-form-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px 10px;
 }
-.lead-title {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.8rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #7c7cf0;
-    margin-bottom: 1rem;
+.sb-form-title { font-family: var(--font-display); font-size: 12px; font-weight: 800; color: #fff; }
+.sb-form-badge {
+    font-size: 8px; padding: 2px 7px; border-radius: 20px;
+    background: var(--orange-dim); border: 1px solid var(--orange-mid);
+    color: var(--orange); font-weight: 600; letter-spacing: 0.05em;
 }
+
+/* ── Social ── */
+.sb-social {
+    display: flex; gap: 6px; padding: 0 16px 16px;
+}
+.soc-btn {
+    flex: 1; padding: 5px 0; border-radius: 7px; text-align: center;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 10px; color: var(--muted); cursor: pointer;
+    text-decoration: none; display: block;
+}
+.soc-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
 
 /* ── Streamlit input overrides ── */
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea {
-    background: #0d0d0f !important;
-    border: 1px solid #2a2a33 !important;
-    border-radius: 10px !important;
-    color: #e8e6e0 !important;
-    font-family: 'DM Sans', sans-serif !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    border-radius: 8px !important;
+    color: rgba(255,255,255,0.8) !important;
+    font-family: var(--font-body) !important;
+    font-size: 11px !important;
 }
 [data-testid="stTextInput"] input:focus,
 [data-testid="stTextArea"] textarea:focus {
-    border-color: #7c7cf0 !important;
-    box-shadow: 0 0 0 2px rgba(124,124,240,0.12) !important;
+    border-color: rgba(249,115,22,0.5) !important;
+    box-shadow: 0 0 0 2px rgba(249,115,22,0.08) !important;
+}
+[data-testid="stTextInput"] label,
+[data-testid="stTextArea"] label {
+    color: var(--muted) !important; font-size: 9px !important;
+    text-transform: uppercase; letter-spacing: 0.08em;
 }
 
 /* ── Buttons ── */
 [data-testid="stButton"] > button {
-    background: #7c7cf0;
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.8rem;
-    letter-spacing: 0.06em;
-    padding: 0.55rem 1.25rem;
-    transition: background 0.18s, transform 0.12s;
-    cursor: pointer;
+    background: var(--orange) !important;
+    color: #fff !important; border: none !important;
+    border-radius: 9px !important;
+    font-family: var(--font-display) !important;
+    font-weight: 800 !important; font-size: 11px !important;
+    letter-spacing: 0.02em; padding: 0.5rem 1rem;
+    transition: opacity 0.15s, transform 0.1s;
 }
-[data-testid="stButton"] > button:hover {
-    background: #6060d8;
-    transform: translateY(-1px);
+[data-testid="stButton"] > button:hover { opacity: 0.88; transform: translateY(-1px); }
+
+[data-testid="stFormSubmitButton"] > button {
+    background: var(--orange) !important;
+    color: #fff !important; font-weight: 800 !important;
+    width: 100% !important; border-radius: 9px !important;
+    font-family: var(--font-display) !important;
 }
 
 /* ── Chat input ── */
 [data-testid="stChatInput"] textarea {
-    background: #111114 !important;
-    border: 1px solid #2a2a33 !important;
-    border-radius: 12px !important;
-    color: #e8e6e0 !important;
-    font-family: 'DM Sans', sans-serif !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    border-radius: 14px !important;
+    color: rgba(255,255,255,0.85) !important;
+    font-family: var(--font-body) !important;
+}
+[data-testid="stChatInput"] textarea:focus {
+    border-color: rgba(249,115,22,0.4) !important;
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.06) !important;
 }
 
-/* ── Success / Error ── */
+/* ── Chat header ── */
+.chat-header {
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--border);
+    margin-bottom: 1.25rem;
+}
+.ch-logo {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--surface); border: 1.5px solid rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.ch-ring {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 3px solid transparent;
+    border-top-color: var(--orange); border-right-color: var(--teal);
+    border-bottom-color: var(--purple); border-left-color: #4ade80;
+}
+.ch-title { font-family: var(--font-display); font-size: 16px; font-weight: 800; color: #fff; margin: 0; }
+.ch-sub   { font-size: 10px; color: var(--muted); margin: 0; }
+.grad-text {
+    background: linear-gradient(90deg, var(--teal), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.rag-badge {
+    margin-left: auto; padding: 3px 10px;
+    background: var(--orange-dim); border: 1px solid var(--orange-mid);
+    border-radius: 20px; font-size: 9px; color: var(--orange);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;
+}
+
+/* ── Chat bubbles ── */
+.chat-wrapper { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.25rem; }
+.msg-row { display: flex; align-items: flex-start; gap: 8px; animation: fadeUp 0.22s ease; }
+.msg-row.user { flex-direction: row-reverse; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+.avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; flex-shrink: 0;
+    font-family: var(--font-display);
+}
+.avatar.bot  { background: var(--teal-dim); border: 1.5px solid rgba(34,211,238,0.28); color: var(--teal); }
+.avatar.user { background: var(--orange-dim); border: 1.5px solid var(--orange-mid); color: var(--orange); }
+
+.bubble { padding: 9px 13px; border-radius: 14px; max-width: 78%; font-size: 0.88rem; line-height: 1.68; word-break: break-word; }
+.bubble.bot  { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-top-left-radius: 4px; color: var(--text); }
+.bubble.user { background: var(--orange-dim); border: 1px solid var(--orange-mid); border-top-right-radius: 4px; color: #fff; text-align: right; }
+
+.ts { font-size: 0.65rem; color: var(--muted); margin-top: 3px; opacity: 0.7; }
+.msg-row.user .ts { text-align: right; }
+
+/* ── Metric ── */
+[data-testid="stMetric"] { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.5rem 0.75rem; }
+[data-testid="stMetricLabel"] { color: var(--muted) !important; font-size: 8.5px !important; text-transform: uppercase; letter-spacing: 0.08em; }
+[data-testid="stMetricValue"] { color: var(--orange) !important; font-family: var(--font-display) !important; font-size: 1.4rem !important; }
+
+/* ── Alert ── */
 [data-testid="stAlert"] { border-radius: 10px; }
 
-/* ── Sidebar heading ── */
-.sidebar-logo {
-    font-family: 'Space Mono', monospace;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #7c7cf0;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.25rem;
-}
-.sidebar-sub {
-    font-size: 0.78rem;
-    color: #555;
-    margin-bottom: 1.5rem;
-}
+/* ── Divider ── */
+hr { border: none; border-top: 1px solid var(--border-light); margin: 0.75rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Session state initialisation ───────────────────────────────────────────────
 def init_session():
     if "messages" not in st.session_state:
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": "Hi there! 👋 I'm the RCBA ImpactBot — your guide to the Rotaract Club of Bombay Airport. Ask me about our projects, events, how to join, or anything else about RCBA! 🌟",
+                "content": "Jai Rotaract! 🌀 I'm RCBA ImpactBot — your guide to the Rotaract Club of Bombay Airport.\n\nI answer only from our official knowledge base, so you'll always get accurate info. Ask me about projects, events, how to join, or anything RCBA!",
                 "time": datetime.now().strftime("%H:%M"),
             }
         ]
@@ -218,107 +292,135 @@ def init_session():
 init_session()
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-logo">RCBA ImpactBot 🥰</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Rotaract Club of Bombay Airport · Act For Impact</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
+    # Brand
+    st.markdown("""
+    <div class="sb-brand">
+        <div class="sb-logo-row">
+            <div class="sb-logo"><div class="sb-logo-ring"></div></div>
+            <div>
+                <div class="sb-club">Rotaract Club</div>
+                <div class="sb-sub">Bombay Airport</div>
+            </div>
+        </div>
+        <div class="sb-pill">
+            <div class="sb-dot"></div>
+            <span class="sb-pill-text">Live · Knowledge-grounded</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Stats
-    total = len([m for m in st.session_state.messages if m["role"] == "user"])
-    st.metric("Messages sent", total)
+    msg_count = len([m for m in st.session_state.messages if m["role"] == "user"])
+    st.markdown(f"""
+    <div class="sb-stats">
+        <div class="stat-card">
+            <div class="stat-label">Messages</div>
+            <div class="stat-val orange">{msg_count}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Projects</div>
+            <div class="stat-val teal">21</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("---")
+    # Actions
+    st.markdown('<span class="sb-section">Actions</span>', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("↺ Reload KB"):
+            st.session_state.show_admin_prompt = True
+    with col2:
+        if st.button("✕ Clear"):
+            st.session_state.messages = [
+                {
+                    "role": "assistant",
+                    "content": "Chat cleared! How can I help you learn about RCBA?",
+                    "time": datetime.now().strftime("%H:%M"),
+                }
+            ]
+            st.rerun()
 
-    # Clear chat
-    if st.button("🗑️ Clear chat"):
-        st.session_state.messages = [
-            {
-                "role": "assistant",
-                "content": "Chat cleared. How can I help you?",
-                "time": datetime.now().strftime("%H:%M"),
-            }
-        ]
-        st.rerun()
-
-    # Reload knowledge base from S3
-        # Reload button
-    if st.button("🔄 Reload knowledge base"):
-        st.session_state.show_admin_prompt = True
-
-    # Password prompt
     if st.session_state.show_admin_prompt:
-        password = st.text_input("Enter admin password", type="password")
-
-        if st.button("Submit"):
-            if password == ADMIN_PASSWORD:
+        pwd = st.text_input("Admin password", type="password", key="admin_pwd")
+        if st.button("Confirm", key="admin_confirm"):
+            if pwd == ADMIN_PASSWORD:
                 st.session_state.show_admin_prompt = False
                 ok, msg = reload_knowledge()
-
-                if ok:
-                    st.success(msg)
-                else:
-                    st.error(msg)
+                st.success(msg) if ok else st.error(msg)
             else:
-                st.error("Incorrect password ❌")
+                st.error("Incorrect password")
 
-    st.markdown("---")
+    st.markdown("<hr>", unsafe_allow_html=True)
 
-    # ── Lead capture form ──────────────────────────────────────────────────────
-    st.markdown('<div class="lead-title">📋 Get in Touch</div>', unsafe_allow_html=True)
+    # Get in touch form
+    st.markdown("""
+    <div class="sb-form-header">
+        <span class="sb-form-title">Get in touch</span>
+        <span class="sb-form-badge">FREE</span>
+    </div>
+    """, unsafe_allow_html=True)
 
     if st.session_state.lead_submitted:
-        st.success("✅ Thanks! We'll be in touch soon.")
+        st.success("Thanks! We'll be in touch soon.")
     else:
         with st.form("lead_form", clear_on_submit=True):
             name  = st.text_input("Name *", placeholder="Jane Smith")
             email = st.text_input("Email *", placeholder="jane@example.com")
             phone = st.text_input("Phone", placeholder="+91 98765 43210")
-
-            submitted = st.form_submit_button("Submit →", use_container_width=True)
+            submitted = st.form_submit_button("+ Join the Movement", use_container_width=True)
 
             if submitted:
-                # Validation
                 if not name.strip():
                     st.error("Name is required.")
                 elif not email.strip() or "@" not in email:
                     st.error("A valid email is required.")
                 else:
-                    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-                    lead_data = {
-                        "name":      name.strip(),
-                        "email":     email.strip(),
-                        "phone":     phone.strip() or "—",
-                        "timestamp": timestamp,
-                    }
-
-                    # Upload to S3
-                    s3_ok, s3_msg = upload_lead_to_s3(lead_data)
-                    if not s3_ok:
-                        st.warning(f"S3: {s3_msg}")
-
-                    # Send email
-                    mail_ok, mail_msg = send_lead_email(lead_data)
-                    if not mail_ok:
-                        st.warning(f"Email: {mail_msg}")
-
+                    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+                    lead = {"name": name.strip(), "email": email.strip(), "phone": phone.strip() or "—", "timestamp": ts}
+                    s3_ok, s3_msg = upload_lead_to_s3(lead)
+                    if not s3_ok: st.warning(f"S3: {s3_msg}")
+                    mail_ok, mail_msg = send_lead_email(lead)
+                    if not mail_ok: st.warning(f"Email: {mail_msg}")
                     st.session_state.lead_submitted = True
                     st.rerun()
 
+    # Social links
+    st.markdown("""
+    <hr>
+    <span class="sb-section" style="padding-left:0;display:block;margin-bottom:8px;">Find us online</span>
+    <div class="sb-social">
+        <a class="soc-btn" href="https://www.instagram.com/rc_bombayairport/" target="_blank">IG</a>
+        <a class="soc-btn" href="https://www.linkedin.com/in/rotaract-club-of-bombay-airport-6a35621a7/" target="_blank">LI</a>
+        <a class="soc-btn" href="https://www.facebook.com/RCBombayAirport/" target="_blank">FB</a>
+        <a class="soc-btn" href="https://www.rcbombayairport.org" target="_blank">WEB</a>
+    </div>
+    """, unsafe_allow_html=True)
 
-# ── Main chat area ─────────────────────────────────────────────────────────────
-st.markdown("## 🌟 RCBA AI Assistant")
-st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-# Render history
+# ── MAIN CHAT ─────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="chat-header">
+    <div class="ch-logo"><div class="ch-ring"></div></div>
+    <div>
+        <p class="ch-title">RCBA <span class="grad-text">ImpactBot</span></p>
+        <p class="ch-sub">Act for Impact · District 3141</p>
+    </div>
+    <div class="rag-badge">RAG only</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Render messages
 chat_html = '<div class="chat-wrapper">'
 for msg in st.session_state.messages:
     role     = msg["role"]
-    content  = msg["content"]
+    content  = msg["content"].replace("\n", "<br>")
     ts       = msg.get("time", "")
     css_role = "bot" if role == "assistant" else "user"
-    icon     = "AI" if role == "assistant" else "You"
+    icon     = "RC" if role == "assistant" else "You"
 
     chat_html += f"""
     <div class="msg-row {css_role}">
@@ -332,23 +434,17 @@ for msg in st.session_state.messages:
 chat_html += "</div>"
 st.markdown(chat_html, unsafe_allow_html=True)
 
-# ── Chat input ─────────────────────────────────────────────────────────────────
-if prompt := st.chat_input("Ask me about RCBA — projects, events, how to join…"):
+# Chat input
+if prompt := st.chat_input("Ask about RCBA — projects, events, how to join…"):
     now = datetime.now().strftime("%H:%M")
-
-    # Append user message
     st.session_state.messages.append({"role": "user", "content": prompt, "time": now})
 
-    # Get AI response
-    with st.spinner("Thinking…"):
-        history = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages[:-1]  # exclude the message just added
-        ]
+    with st.spinner("Looking that up…"):
+        history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
         reply, err = get_ai_response(prompt, history)
 
     if err:
-        reply = f"⚠️ {err}"
+        reply = f"Error: {err}"
 
     st.session_state.messages.append({"role": "assistant", "content": reply, "time": now})
     st.rerun()

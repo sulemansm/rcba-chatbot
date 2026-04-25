@@ -1,6 +1,7 @@
 """
-ai_service.py — Groq API integration (OpenAI-compatible)
-With logging + built-in email alerts (no external import)
+ai_service.py — Groq API integration with strict RAG-only answering
+Only answers based on the knowledge base provided. Will not hallucinate or
+answer questions outside the scope of the RCBA knowledge base.
 """
 
 import os
@@ -10,7 +11,6 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 import boto3
-from botocore.exceptions import ClientError, BotoCoreError
 from openai import OpenAI, APIError, APIConnectionError, RateLimitError
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── ENV ───────────────────────────────────────────────────────────────────────
-MODEL = os.getenv("MODEL_NAME", "groq/compound-mini")
+MODEL = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
@@ -36,7 +36,6 @@ _last_error_time = 0
 def send_error_email(error_msg: str, user_message: str):
     global _last_error_time
 
-    # Avoid spam (1 email/min)
     if time.time() - _last_error_time < 60:
         return
 
@@ -57,7 +56,6 @@ User message:
 Time:
 {datetime.now()}
 """)
-
         msg["Subject"] = "🚨 RCBA Chatbot Error"
         msg["From"] = EMAIL_USER
         msg["To"] = EMAIL_USER
@@ -100,22 +98,46 @@ def reload_knowledge():
     global _knowledge_cache
     _knowledge_cache = None
     content = get_knowledge()
-
     if content.startswith("["):
         return False, content
-    return True, "Knowledge base reloaded"
+    return True, "Knowledge base reloaded successfully ✅"
 
 
-# ── PROMPT ────────────────────────────────────────────────────────────────────
+# ── STRICT RAG SYSTEM PROMPT ──────────────────────────────────────────────────
 def _build_system_prompt():
-    return f"""
-You are RCBA's AI assistant. Be helpful, friendly, and accurate.
+    knowledge = get_knowledge()
+    return f"""You are RCBA ImpactBot, the official AI assistant for the Rotaract Club of Bombay Airport (RCBA).
 
-{get_knowledge()}
+═══ CRITICAL RULES — FOLLOW STRICTLY ═══
+
+1. KNOWLEDGE BASE ONLY: Answer EXCLUSIVELY using the KNOWLEDGE BASE provided below.
+   Never make up, guess, or infer any facts not stated there.
+
+2. OUT-OF-SCOPE QUESTIONS: If the question cannot be answered from the knowledge base,
+   reply with exactly:
+   "I don't have information on that. Please reach out to us at rc.bombayairport3141@gmail.com or visit rcbombayairport.org for more details! 😊"
+
+3. NO GENERAL KNOWLEDGE: Do not answer questions about history, science, news,
+   other organisations, or anything unrelated to RCBA.
+
+4. TONE: Warm, friendly, enthusiastic — this is a youth community club.
+   Use emojis naturally but sparingly.
+
+5. FORMAT: Be concise. Use bullet points when listing multiple items.
+   Never write walls of text.
+
+6. ACCURACY: Quote dates, names, phone numbers, and links exactly as they appear
+   in the knowledge base — never paraphrase or guess.
+
+═══ KNOWLEDGE BASE ═══
+{knowledge}
+═══════════════════════
+
+Remember: If the answer isn't in the knowledge base above, say you don't know and redirect to contact details.
 """
 
 
-# ── GROQ ──────────────────────────────────────────────────────────────────────
+# ── GROQ CLIENT ───────────────────────────────────────────────────────────────
 def _get_client():
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -127,20 +149,21 @@ def _get_client():
     )
 
 
-# ── MAIN ──────────────────────────────────────────────────────────────────────
+# ── MAIN RESPONSE FUNCTION ────────────────────────────────────────────────────
 def get_ai_response(user_message, history):
     try:
         client = _get_client()
 
         messages = [{"role": "system", "content": _build_system_prompt()}]
-        messages += history[-8:]
+        # Keep last 6 turns only — conserves tokens for the knowledge base
+        messages += history[-6:]
         messages.append({"role": "user", "content": user_message})
 
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            max_tokens=768,
-            temperature=0.6,
+            max_tokens=512,
+            temperature=0.1,   # Very low — factual/grounded RAG responses only
         )
 
         return response.choices[0].message.content.strip(), None
